@@ -1,0 +1,21 @@
+device: cuda
+
+dataset:
+  src_train: data/train.en
+  trg_train: data/train.de
+  src_val: data/val.en
+  trg_val: data/val.de
+  src_test: data/test.de
+  max_length: 100
+  batch_size: 32
+
+model_name: rnn
+
+model:
+  embed_size: 256
+  hidden_size: 256
+  rnn_layers: 1
+
+training:
+  epochs_cnt: 10
+  lr: 0.001
