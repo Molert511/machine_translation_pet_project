@@ -20,7 +20,7 @@ class Inferencer:
             batch_translations = self.model.translate(src_rows, src_lens)
 
             for i, indices in enumerate(batch_translations):
-                model_translation_words = [indices_to_words_dict.get(token, "<unk>") for token in indices[1:src_lens[i] - 1]]
+                model_translation_words = [indices_to_words_dict.get(token, "<unk>") for token in indices]
                 model_translations.append(" ".join(model_translation_words))
 
         with open(self.filename, "w") as f:

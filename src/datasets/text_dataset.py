@@ -12,15 +12,15 @@ class TextDataset(Dataset):
             vocab_src = None,
             vocab_trg = None,
             create_vocab = False,
-            min_frequency=200,
+            min_frequency=3,
     ):
         with open(src_filepath, "r") as f:
-            self.src_data = [row.split() for row in f]
+            self.src_data = [row.strip().split() for row in f]
 
         self.trg_data = None
         if trg_filepath:
             with open(trg_filepath, "r") as f:
-                self.trg_data = [row.split() for row in f]
+                self.trg_data = [row.strip().split() for row in f]
 
         self.max_length = max_length
 

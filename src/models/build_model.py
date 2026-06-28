@@ -1,8 +1,10 @@
 from .rnn_based import RNNTranslationModel
+from .transformer_based import TransformerTranslationModel
 
 
 MODEL_CLASSES = {
     "rnn": RNNTranslationModel,
+    "transformer": TransformerTranslationModel,
 }
 
 

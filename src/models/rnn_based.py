@@ -105,7 +105,7 @@ class RNNTranslationModel(nn.Module):
             padding_idx=self.vocab_trg["<pad>"],
         )
 
-    def forward(self, src, src_lengths, trg = None):
+    def forward(self, src, src_lengths, trg = None, src_key_padding_mask=None, trg_key_padding_mask=None):
         batch_size = src.shape[0]
         _, (h, c) = self.encoder(src, src_lengths)
 
