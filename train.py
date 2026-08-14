@@ -1,4 +1,6 @@
 import argparse
+from typing import Any
+from pathlib import Path
 
 import torch
 import torch.nn as nn
@@ -6,12 +8,32 @@ from torch.utils.data import DataLoader
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
-from src.configs import load_config
+from src.config_utils import load_config
 from src.datasets import TextDataset
 from src.models import build_model
 from src.training import Trainer
 from src.metrics import bleu
-from src.inference import Inferencer
+
+
+def save_checkpoint(
+    model: nn.Module,
+    optimizer: torch.optim.Optimizer,
+    vocab_src: dict[str, int],
+    vocab_tgt: dict[str, int],
+    config: dict[str, Any],
+    path: str,
+) -> None:
+    checkpoint = {
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "vocab_src": vocab_src,
+        "vocab_tgt": vocab_tgt,
+        "config": config,
+    }
+
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    torch.save(checkpoint, path)
+
 
 def main(config_path: str) -> None:
     config = load_config(config_path)
@@ -36,13 +58,6 @@ def main(config_path: str) -> None:
         create_vocab=False,
     )
 
-    test_dataset = TextDataset(
-        config["dataset"]["src_test"],
-        max_length=config["dataset"]["max_length"],
-        vocab_src=train_dataset.vocab_src,
-        create_vocab=False,
-    )
-
     batch_size = config["dataset"]["batch_size"]
 
     train_loader = DataLoader(
@@ -61,18 +76,9 @@ def main(config_path: str) -> None:
         pin_memory=True,
     )
 
-    test_loader = DataLoader(
-        test_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=2,
-        pin_memory=True,
-    )
-
     dataloaders = {
         "train": train_loader,
         "val": val_loader,
-        "test": test_loader,
     }
 
     model = build_model(
@@ -101,12 +107,18 @@ def main(config_path: str) -> None:
 
     trainer.train()
 
-    inferencer = Inferencer(model, test_loader)
-    inferencer.inference()
+    save_checkpoint(
+        model=model,
+        optimizer=optimizer,
+        vocab_src=train_dataset.vocab_src,
+        vocab_tgt=train_dataset.vocab_tgt,
+        config=config,
+        path=config["checkpoint_path"]
+    )
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(prog="Machine translations exps")
+    parser = argparse.ArgumentParser(prog="Machine Translations Model Training")
     parser.add_argument("--config", type=str, required=True)
 
     args = parser.parse_args()
