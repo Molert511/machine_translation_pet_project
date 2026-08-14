@@ -1,36 +1,43 @@
+from collections import Counter
+from typing import Any
+
 import torch
 from torch.utils.data import Dataset
-from collections import Counter
 
 
 class TextDataset(Dataset):
     def __init__(
             self,
-            src_filepath,
-            trg_filepath = None,
-            max_length = 100,
-            vocab_src = None,
-            vocab_trg = None,
-            create_vocab = False,
-            min_frequency=3,
-    ):
+            src_filepath: str,
+            tgt_filepath: str | None = None,
+            max_length: int = 100,
+            vocab_src: dict[str, int] | None = None,
+            vocab_tgt: dict[str, int] | None = None,
+            create_vocab: bool = False,
+            min_frequency: int = 3,
+    ) -> None:
         with open(src_filepath, "r") as f:
             self.src_data = [row.strip().split() for row in f]
 
-        self.trg_data = None
-        if trg_filepath:
-            with open(trg_filepath, "r") as f:
-                self.trg_data = [row.strip().split() for row in f]
+        self.tgt_data = None
+        if tgt_filepath is not None:
+            with open(tgt_filepath, "r") as f:
+                self.tgt_data = [row.strip().split() for row in f]
+
+        if self.tgt_data and len(self.src_data) != len(self.tgt_data):
+            raise ValueError("Source and target files have different lengths")
 
         self.max_length = max_length
 
         self.vocab_src = vocab_src
-        self.vocab_trg = vocab_trg
-        if create_vocab:
-            self.vocab_src = self.create_vocab(self.src_data, min_frequency=min_frequency)
-            self.vocab_trg = self.create_vocab(self.trg_data, min_frequency=min_frequency)
+        self.vocab_tgt = vocab_tgt
 
-    def create_vocab(self, data, min_frequency):
+        if create_vocab:
+            self.vocab_src = self._create_vocab(self.src_data, min_frequency=min_frequency)
+            self.vocab_tgt = self._create_vocab(self.tgt_data, min_frequency=min_frequency) if self.tgt_data is not None else None
+
+    @staticmethod
+    def _create_vocab(data: list[list[str]], min_frequency: int) -> dict[str, int]:
         vocab = {
             "<pad>": 0,
             "<unk>": 1,
@@ -39,8 +46,9 @@ class TextDataset(Dataset):
         }
 
         counter = Counter()
-        for row in data:
-            counter.update(row)
+        if data is not None:
+            for row in data:
+                counter.update(row)
 
         for word, frequency in counter.items():
             if frequency >= min_frequency:
@@ -48,31 +56,33 @@ class TextDataset(Dataset):
 
         return vocab
 
-    def __len__(self):
+    def _encode_sentence(self, tokens: list[str], vocab: dict[str, int]) -> tuple[torch.Tensor, int]:
+        indices = (
+            [vocab["<bos>"]] +
+            [vocab.get(token, vocab["<unk>"]) for token in tokens[:self.max_length - 2]] +
+            [vocab["<eos>"]]
+        )
+        sentence_len = len(indices)
+        indices += [vocab["<pad>"]] * (self.max_length - sentence_len)
+
+        return torch.tensor(indices), sentence_len
+
+    def __len__(self) -> int:
         return len(self.src_data)
 
-    def __getitem__(self, idx):
-        src_tokens = self.src_data[idx][:self.max_length - 2]
-        src_indices = [self.vocab_src["<bos>"]] + \
-                      [self.vocab_src.get(token, self.vocab_src["<unk>"]) for token in src_tokens] + \
-                      [self.vocab_src["<eos>"]]
-        real_len = len(src_indices)
-        src_indices += [self.vocab_src["<pad>"]] * (self.max_length - real_len)
+    def __getitem__(self, idx: int) -> dict[str, Any]:
+        src_tokens = self.src_data[idx]
+        src_indices, src_sentence_len = self._encode_sentence(src_tokens, self.vocab_src)
 
         item = {
-            "src_row": torch.tensor(src_indices),
-            "src_len": real_len
+            "src_row": src_indices,
+            "src_len": src_sentence_len,
         }
 
-        if self.trg_data:
-            trg_tokens = self.trg_data[idx][:self.max_length - 2]
-            trg_indices = [self.vocab_trg["<bos>"]] + \
-                          [self.vocab_trg.get(token, 1) for token in trg_tokens] + \
-                          [self.vocab_trg["<eos>"]]
-            real_len = len(trg_indices)
-            trg_indices += [self.vocab_trg["<pad>"]] * (self.max_length - real_len)
-
-            item["trg_row"] = torch.tensor(trg_indices)
-            item["trg_len"] = real_len
+        if (self.tgt_data is not None) and (self.vocab_tgt is not None):
+            tgt_tokens = self.tgt_data[idx]
+            tgt_indices, tgt_sentence_len = self._encode_sentence(tgt_tokens, self.vocab_tgt)
+            item["tgt_row"] = tgt_indices
+            item["tgt_len"] = tgt_sentence_len
 
         return item

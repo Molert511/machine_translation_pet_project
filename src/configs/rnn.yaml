@@ -2,9 +2,9 @@ device: cuda
 
 dataset:
   src_train: data/train.en
-  trg_train: data/train.de
+  tgt_train: data/train.de
   src_val: data/val.en
-  trg_val: data/val.de
+  tgt_val: data/val.de
   src_test: data/test.de
   max_length: 100
   batch_size: 32

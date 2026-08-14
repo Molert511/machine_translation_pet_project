@@ -1,5 +1,9 @@
+from collections.abc import Callable
+
 from tqdm import tqdm
 import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
 
 from src.tools import plot_losses_metrics
 
@@ -7,27 +11,26 @@ from src.tools import plot_losses_metrics
 class Trainer:
     def __init__(
         self,
-        model,
-        criterion,
-        metric,
-        optimizer,
-        lr_scheduler,
-        config,
-        device,
-        dataloaders,
-        epochs_cnt,
-    ):
-        
+        model: nn.Module,
+        criterion: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
+        metric: Callable[[nn.Module, DataLoader], float],
+        optimizer: torch.optim.Optimizer,
+        lr_scheduler: torch.optim.lr_scheduler.LRScheduler,
+        device: torch.device,
+        dataloaders: dict[str, DataLoader],
+        epochs_cnt: int,
+        metric_name: str = "BLEU",
+    ) -> None:
+
         self.is_train = True
 
         self.model = model
         self.criterion = criterion
+        self.metric = metric
+        self.metric_name = metric_name
         self.optimizer = optimizer
         self.lr_scheduler = lr_scheduler
 
-        self.metric = metric
-
-        self.config = config
         self.device = device
 
         self.train_dataloader = dataloaders["train"]
@@ -35,77 +38,67 @@ class Trainer:
 
         self.epochs_cnt = epochs_cnt
 
-    def train(self):
+    def train(self) -> None:
         train_losses = []
         val_losses = []
+        val_metrics = []
 
         for epoch in range(self.epochs_cnt):
             print(f"Epoch: {epoch + 1}/{self.epochs_cnt}")
-            train_loss = self.train_epoch()
-            val_loss = self.val_epoch()
+            train_losses.append(self._train_epoch())
 
-            train_losses.append(train_loss)
+            val_loss, val_metric = self._val_epoch()
             val_losses.append(val_loss)
+            val_metrics.append(val_metric)
 
             self.lr_scheduler.step()
 
-            plot_losses_metrics(train_losses, val_losses)
+            plot_losses_metrics(train_losses, val_losses, val_metrics, metric_name=self.metric_name)
 
         torch.save(self.model.state_dict(), "model.pt")
 
-    def train_epoch(self):
+    def _train_epoch(self) -> float:
         self.model.train()
-        self.is_train = True
         total_loss = 0
-        total_tokens = 0
 
-        for i, batch in enumerate(tqdm(self.train_dataloader, desc="Train")):
-            batch_loss, batch_tokens_cnt = self.process_batch(batch)
-            total_loss += batch_loss
-            total_tokens += batch_tokens_cnt
+        for batch in tqdm(self.train_dataloader, desc="Train"):
+            batch_loss = self._process_batch(batch)
 
-        return total_loss / total_tokens
-
-    @torch.no_grad()
-    def val_epoch(self):
-        self.model.eval()
-        self.is_train = False
-        total_loss = 0
-        total_tokens = 0
-
-        for i, batch in enumerate(tqdm(self.val_dataloader, desc="Validation")):
-            batch_loss, batch_tokens_cnt = self.process_batch(batch)
-            total_loss += batch_loss
-            total_tokens += batch_tokens_cnt
-
-        return total_loss / total_tokens
-
-    def process_batch(self, batch):
-        src_row = batch["src_row"].to(self.device)
-        src_len = batch["src_len"]
-        trg_row = batch["trg_row"].to(self.device)
-
-        trg_input = trg_row[:, :-1]
-        trg_output = trg_row[:, 1:]
-
-        trg_padding_mask = (trg_input == self.model.vocab_trg["<pad>"])
-        src_padding_mask = (src_row == self.model.vocab_src["<pad>"])
-
-        output = self.model(src_row, src_len, trg_input, src_padding_mask, trg_padding_mask)
-
-        
-        output = output.reshape(-1, output.shape[-1])
-        trg_output = trg_output.reshape(-1)
-
-        loss = self.criterion(output, trg_output)
-
-        if self.is_train:
             self.optimizer.zero_grad()
-            loss.backward()
+            batch_loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
             self.optimizer.step()
 
-        batch_loss = loss.item()
-        batch_tokens_cnt = (trg_output != self.model.vocab_trg["<pad>"]).sum().item()
+            total_loss += batch_loss.item()
 
-        return (batch_loss, batch_tokens_cnt)
+        return total_loss / len(self.train_dataloader)
+
+    @torch.no_grad()
+    def _val_epoch(self) -> tuple[float, float]:
+        self.model.eval()
+        total_loss = 0
+
+        for batch in tqdm(self.val_dataloader, desc="Validation"):
+            batch_loss = self._process_batch(batch)
+            total_loss += batch_loss.item()
+
+        val_metric = self.metric(self.model, self.val_dataloader)
+
+        return total_loss / len(self.val_dataloader), val_metric
+
+    def _process_batch(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
+        src_rows = batch["src_row"].to(self.device)
+        src_lens = batch["src_len"].tolist()
+        tgt_rows = batch["tgt_row"].to(self.device)
+
+        tgt_input = tgt_rows[:, :-1]
+        tgt_output = tgt_rows[:, 1:]
+
+        output = self.model(src_rows, src_lens, tgt_input)
+
+        output = output.reshape(-1, output.shape[-1])
+        tgt_output = tgt_output.reshape(-1)
+
+        loss = self.criterion(output, tgt_output)
+
+        return loss

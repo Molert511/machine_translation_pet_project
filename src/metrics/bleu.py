@@ -1,28 +1,33 @@
 from tqdm import tqdm
 import torch
-import sacrebleu
+import torch.nn as nn
+from torch.utils.data import DataLoader
+from sacrebleu.metrics import BLEU
 
 
-def bleu(model, dataloader):
-    indices_to_words_dict = {value: key for key, value in model.vocab_trg.items()}
+def bleu(model: nn.Module, dataloader: DataLoader) -> float:
+    model.eval()
+    indices_to_words_dict = {value: key for key, value in model.vocab_tgt.items()}
 
     model_translations = []
-    original_translations = []
+    reference_translations = []
 
-    for i, batch in enumerate(tqdm(dataloader, desc="Metric calculation")):
-        src_rows = batch["src_row"].to(model.device)
-        src_lens = batch["src_len"]
-        trg_rows = batch["trg_row"].to(torch.device("cpu"))
-        trg_lens = batch["trg_len"]
+    with torch.no_grad():
+        for batch in tqdm(dataloader, desc="Metric calculation"):
+            src_rows = batch["src_row"].to(model.device)
+            src_lens = batch["src_len"].tolist()
+            tgt_rows = batch["tgt_row"].to(torch.device("cpu"))
+            tgt_lens = batch["tgt_len"].tolist()
 
-        batch_translations = model.translate(src_rows, src_lens)
+            batch_indices = model(src_rows, src_lens)
 
-        for i, indices in enumerate(batch_translations):
-            model_translation_words = [indices_to_words_dict.get(token, "<unk>") for token in indices[1:src_lens[i] - 1]]
-            model_translations.append(" ".join(model_translation_words))
+            for i, sentence_indices in enumerate(batch_indices):
+                sentence_translation = [indices_to_words_dict.get(idx, "<unk>") for idx in sentence_indices]
+                model_translations.append(" ".join(sentence_translation))
 
-            original_translation_words = [indices_to_words_dict.get(token, "<unk>") for token in trg_rows[1:trg_lens[i] - 1]]
-            original_translations.append([" ".join(original_translation_words)])
+                reference_sentence_translation = [indices_to_words_dict.get(idx, "<unk>") for idx in tgt_rows[1:tgt_lens[i] + 1]]
+                reference_translations.append([" ".join(reference_sentence_translation)])
 
-    bleu_metric = sacrebleu.corpus_bleu(model_translations, original_translations)
-    return bleu_metric.score
+        bleu_metric = BLEU()
+
+        return bleu_metric.corpus_score(model_translations, reference_translations).score

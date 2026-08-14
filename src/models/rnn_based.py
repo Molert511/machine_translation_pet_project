@@ -6,20 +6,19 @@ from typing import Type
 
 class RNNEncoder(nn.Module):
     def __init__(
-            self,
-            vocab_size: int,
-            embed_size: int = 256,
-            hidden_size: int = 256,
-            rnn_type: Type = nn.LSTM,
-            rnn_layers: int = 1,
-            padding_idx: int = 0,
-    ):
-        super(RNNEncoder, self).__init__()
+        self,
+        vocab_size: int,
+        embed_size: int = 256,
+        hidden_size: int = 256,
+        num_layers: int = 1,
+        padding_idx: int = 0,
+    ) -> None:
+        super().__init__()
         self.embedding = nn.Embedding(vocab_size, embed_size, padding_idx=padding_idx)
-        self.rnn = rnn_type(
+        self.lstm = nn.LSTM(
             input_size=embed_size,
             hidden_size=hidden_size,
-            num_layers=rnn_layers,
+            num_layers=num_layers,
             batch_first=True,
             bidirectional=True,
         )
@@ -27,119 +26,115 @@ class RNNEncoder(nn.Module):
         self.fc_h = nn.Linear(hidden_size * 2, hidden_size)
         self.fc_c = nn.Linear(hidden_size * 2, hidden_size)
 
-    def forward(self, x, lengths):
+    def forward(self, x: torch.Tensor, lengths: list[int]) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
         embeddings = self.embedding(x)
-        packed_embeddings = pack_padded_sequence(embeddings, lengths.cpu(), batch_first=True, enforce_sorted=False)
-        outputs, (h, c) = self.rnn(packed_embeddings)
-        padded_outputs, _ = pad_packed_sequence(outputs, batch_first=True)
+        packed_embeddings = pack_padded_sequence(embeddings, lengths, batch_first=True, enforce_sorted=False)
+        output, (h, c) = self.lstm(packed_embeddings)
+        padded_output, _ = pad_packed_sequence(output, batch_first=True, padding_value=0.0)
 
         h = torch.cat([h[::2], h[1::2]], dim=2)
         c = torch.cat([c[::2], c[1::2]], dim=2)
-        h = torch.relu(self.fc_h(h))
-        c = torch.relu(self.fc_c(c))
+        h = self.fc_h(h)
+        c = self.fc_c(c)
 
-        return padded_outputs, (h, c)
+        return padded_output, (h, c)
 
 
 class RNNDecoder(nn.Module):
     def __init__(
-            self,
-            vocab_size: int,
-            embed_size: int = 256,
-            hidden_size: int = 256,
-            rnn_type: Type = nn.LSTM,
-            rnn_layers: int = 1,
-            padding_idx: int = 0,
-    ):
-        super(RNNDecoder, self).__init__()
+        self,
+        vocab_size: int,
+        embed_size: int = 256,
+        hidden_size: int = 256,
+        num_layers: int = 1,
+        padding_idx: int = 0,
+    ) -> None:
+        super().__init__()
         self.embedding = nn.Embedding(vocab_size, embed_size, padding_idx=padding_idx)
-        self.rnn = rnn_type(
+        self.lstm = nn.LSTM(
             input_size=embed_size,
             hidden_size=hidden_size,
-            num_layers=rnn_layers,
+            num_layers=num_layers,
             batch_first=True,
         )
 
         self.fc_out = nn.Linear(hidden_size, vocab_size)
 
-    def forward(self, x, h_input, c_input):
+    def forward(
+        self,
+        x: torch.Tensor,
+        h_input: torch.Tensor,
+        c_input: torch.Tensor
+    ) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
         embedding = self.embedding(x)
-        output, (h, c) = self.rnn(embedding, (h_input, c_input))
-        prediction = self.fc_out(output.squeeze(1))
+        output, (h, c) = self.lstm(embedding, (h_input, c_input))
+        prediction = self.fc_out(output)
 
-        return prediction, h, c
+        return prediction, (h, c)
 
 
 class RNNTranslationModel(nn.Module):
     def __init__(
-            self,
-            device,
-            vocab_src,
-            vocab_trg,
-            embed_size = 256,
-            hidden_size = 256,
-            rnn_type = nn.LSTM,
-            rnn_layers = 1,
-            max_length = 100,
-    ):
-        super(RNNTranslationModel, self).__init__()
+        self,
+        device: torch.device,
+        vocab_src: dict[str, int],
+        vocab_tgt: dict[str, int],
+        embed_size: int = 256,
+        hidden_size: int = 256,
+        num_layers: int = 1,
+        max_length: int = 100,
+    ) -> None:
+        super().__init__()
         self.device = device
         self.vocab_src = vocab_src
-        self.vocab_trg = vocab_trg
+        self.vocab_tgt = vocab_tgt
         self.max_length = max_length
 
         self.encoder = RNNEncoder(
             vocab_size=len(self.vocab_src),
             embed_size=embed_size,
             hidden_size=hidden_size,
-            rnn_type=rnn_type,
-            rnn_layers=rnn_layers,
+            num_layers=num_layers,
             padding_idx=self.vocab_src["<pad>"],
         )
         self.decoder = RNNDecoder(
-            vocab_size=len(self.vocab_trg),
+            vocab_size=len(self.vocab_tgt),
             embed_size=embed_size,
             hidden_size=hidden_size,
-            rnn_type=rnn_type,
-            rnn_layers=rnn_layers,
-            padding_idx=self.vocab_trg["<pad>"],
+            num_layers=num_layers,
+            padding_idx=self.vocab_tgt["<pad>"],
         )
 
-    def forward(self, src, src_lengths, trg = None, src_key_padding_mask=None, trg_key_padding_mask=None):
-        batch_size = src.shape[0]
+    def forward(
+        self,
+        src: torch.Tensor,
+        src_lengths: list[int],
+        tgt: torch.Tensor | None = None,
+    ) -> torch.Tensor | list[list[int]]:
         _, (h, c) = self.encoder(src, src_lengths)
 
-        if trg is not None:
-            trg_len = trg.shape[1]
-            trg_vocab_size = self.decoder.fc_out.out_features
-            outputs = torch.zeros(batch_size, trg_len, trg_vocab_size).to(self.device)
-            input_token = trg[:, 0].unsqueeze(1)
+        if tgt is not None:
+            predictions, _ = self.decoder(tgt[:, :-1], h, c)
 
-            for t in range(1, trg_len):
-                output, h, c = self.decoder(input_token, h, c)
-                outputs[:, t] = output
-                input_token = trg[:, t].unsqueeze(1)
+            return predictions
 
-            return outputs
-        else:
-            return self.translate(src, src_lengths)
+        return self._translate(h, c)
 
-    def translate(self, src, src_lengths):
+    def _translate(self, h: torch.Tensor, c: torch.Tensor) -> list[list[int]]:
         with torch.no_grad():
-            batch_size = src.shape[0]
-            _, (h, c) = self.encoder(src, src_lengths)
-            input_token = torch.tensor([self.vocab_trg["<bos>"]] * batch_size).unsqueeze(1).to(self.device)
+            batch_size = h.shape[1]
+            input_token = torch.tensor([self.vocab_tgt["<bos>"]] * batch_size).unsqueeze(1).to(self.device)
 
             translations = [[] for _ in range(batch_size)]
             is_finished = [False] * batch_size
 
             for _ in range(self.max_length):
-                output, h, c = self.decoder(input_token, h, c)
-                current_token = output.argmax(1)
+                output, (h, c) = self.decoder(input_token, h, c)
+                current_token = output.squeeze(1).argmax(dim=1)
 
                 for i, token in enumerate(current_token):
                     if not is_finished[i]:
-                        if token.item() == self.vocab_trg["<eos>"]:
+                        if token.item() == self.vocab_tgt["<eos>"]:
                             is_finished[i] = True
                         else:
                             translations[i].append(token.item())
