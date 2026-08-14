@@ -55,8 +55,6 @@ class Trainer:
 
             plot_losses_metrics(train_losses, val_losses, val_metrics, metric_name=self.metric_name)
 
-        torch.save(self.model.state_dict(), "model.pt")
-
     def _train_epoch(self) -> float:
         self.model.train()
         total_loss = 0
