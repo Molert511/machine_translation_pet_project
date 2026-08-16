@@ -1,11 +1,15 @@
+from typing import Protocol
+
 from tqdm import tqdm
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
+from src.models import ModelProtocol
+
 
 class Inferencer:
-    def __init__(self, model: nn.Module, dataloader: DataLoader, filename: str = "translations.txt") -> None:
+    def __init__(self, model: ModelProtocol, dataloader: DataLoader, filename: str = "translations.txt") -> None:
         self.model = model
         self.dataloader = dataloader
         self.filename = filename
@@ -21,7 +25,7 @@ class Inferencer:
                 src_rows = batch["src_row"].to(self.model.device)
                 src_lens = batch["src_len"].tolist()
 
-                batch_indices = self.model(src_rows, src_lens)
+                batch_indices = self.model.translate(src_rows, src_lens)
 
                 for sentence_indices in batch_indices:
                     sentence_translation = [indices_to_words_dict.get(idx, "<unk>") for idx in sentence_indices]

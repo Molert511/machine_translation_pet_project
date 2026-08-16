@@ -2,18 +2,18 @@ from collections.abc import Callable
 
 from tqdm import tqdm
 import torch
-import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from src.tools import plot_losses_metrics
+from src.models import ModelProtocol
 
 
 class Trainer:
     def __init__(
         self,
-        model: nn.Module,
+        model: ModelProtocol,
         criterion: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
-        metric: Callable[[nn.Module, DataLoader], float],
+        metric: Callable[[ModelProtocol, DataLoader], float],
         optimizer: torch.optim.Optimizer,
         lr_scheduler: torch.optim.lr_scheduler.LRScheduler,
         device: torch.device,
