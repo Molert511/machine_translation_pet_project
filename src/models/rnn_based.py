@@ -109,20 +109,22 @@ class RNNTranslationModel(nn.Module):
         self,
         src: torch.Tensor,
         src_lengths: list[int],
-        tgt: torch.Tensor | None = None,
-    ) -> torch.Tensor | list[list[int]]:
+        tgt: torch.Tensor,
+    ) -> torch.Tensor:
         _, (h, c) = self.encoder(src, src_lengths)
 
         if tgt is not None:
-            predictions, _ = self.decoder(tgt[:, :-1], h, c)
+            predictions, _ = self.decoder(tgt, h, c)
 
             return predictions
 
-        return self._translate(h, c)
+        return self.translate(h, c)
 
-    def _translate(self, h: torch.Tensor, c: torch.Tensor) -> list[list[int]]:
+    def translate(self, src: torch.Tensor, src_lengths: list[int]) -> list[list[int]]:
         with torch.no_grad():
-            batch_size = h.shape[1]
+            _, (h, c) = self.encoder(src, src_lengths)
+
+            batch_size = src.shape[0]
             input_token = torch.tensor([self.vocab_tgt["<bos>"]] * batch_size).unsqueeze(1).to(self.device)
 
             translations = [[] for _ in range(batch_size)]

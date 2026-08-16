@@ -1,0 +1,16 @@
+[project]
+name = "machine-translation-pet-project"
+version = "0.1.0"
+description = "Machine translation models training"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "datasets>=5.0.1",
+    "matplotlib>=3.11.1",
+    "numpy>=2.5.2",
+    "pandas>=3.0.5",
+    "pyyaml>=6.0.3",
+    "sacrebleu>=2.6.0",
+    "torch>=2.13.0",
+    "tqdm>=4.70.0",
+]

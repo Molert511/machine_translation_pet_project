@@ -2,10 +2,12 @@ from tqdm import tqdm
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from sacrebleu.metrics import BLEU
+from sacrebleu.metrics.bleu import BLEU
+
+from src.models import ModelProtocol
 
 
-def bleu(model: nn.Module, dataloader: DataLoader) -> float:
+def bleu(model: ModelProtocol, dataloader: DataLoader) -> float:
     model.eval()
     indices_to_words_dict = {value: key for key, value in model.vocab_tgt.items()}
 
@@ -19,7 +21,7 @@ def bleu(model: nn.Module, dataloader: DataLoader) -> float:
             tgt_rows = batch["tgt_row"].to(torch.device("cpu"))
             tgt_lens = batch["tgt_len"].tolist()
 
-            batch_indices = model(src_rows, src_lens)
+            batch_indices = model.translate(src_rows, src_lens)
 
             for i, sentence_indices in enumerate(batch_indices):
                 sentence_translation = [indices_to_words_dict.get(idx, "<unk>") for idx in sentence_indices]

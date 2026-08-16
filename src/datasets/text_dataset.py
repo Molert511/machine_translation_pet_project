@@ -71,6 +71,9 @@ class TextDataset(Dataset):
         return len(self.src_data)
 
     def __getitem__(self, idx: int) -> dict[str, Any]:
+        if self.vocab_src is None:
+            raise ValueError("Source vocab is empty")
+
         src_tokens = self.src_data[idx]
         src_indices, src_sentence_len = self._encode_sentence(src_tokens, self.vocab_src)
 

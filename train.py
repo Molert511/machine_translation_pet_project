@@ -10,13 +10,13 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from src.config_utils import load_config
 from src.datasets import TextDataset
-from src.models import build_model
+from src.models import build_model, ModelProtocol
 from src.training import Trainer
 from src.metrics import bleu
 
 
 def save_checkpoint(
-    model: nn.Module,
+    model: ModelProtocol,
     optimizer: torch.optim.Optimizer,
     vocab_src: dict[str, int],
     vocab_tgt: dict[str, int],
