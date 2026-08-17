@@ -7,15 +7,16 @@ dataset:
   tgt_val: data/val.de
   max_length: 100
 
-model_name: rnn
+model_name: transformer
 
 model:
-  embed_size: 256
-  hidden_size: 256
-  num_layers: 1
+  d_model: 512
+  num_encoder_layers: 2
+  num_decoder_layers: 2
+  nhead: 8
 
 training:
   batch_size: 32
-  epochs_cnt: 5
+  epochs_cnt: 2
 
-checkpoint_path: checkpoints/rnn_model
+checkpoint_path: checkpoints/transformer_model

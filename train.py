@@ -58,7 +58,7 @@ def main(config_path: str) -> None:
         create_vocab=False,
     )
 
-    batch_size = config["dataset"]["batch_size"]
+    batch_size = config["training"]["batch_size"]
 
     train_loader = DataLoader(
         train_dataset,
