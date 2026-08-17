@@ -41,7 +41,7 @@ def main(checkpoint_path: str, src_filepath: str, output_path: str) -> None:
 
     test_loader = DataLoader(
         test_dataset,
-        batch_size=config["dataset"]["batch_size"],
+        batch_size=config["training"]["batch_size"],
         shuffle=False,
         num_workers=2,
         pin_memory=True,

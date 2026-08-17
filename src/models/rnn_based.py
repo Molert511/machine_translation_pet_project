@@ -125,22 +125,22 @@ class RNNTranslationModel(nn.Module):
             _, (h, c) = self.encoder(src, src_lengths)
 
             batch_size = src.shape[0]
-            input_token = torch.tensor([self.vocab_tgt["<bos>"]] * batch_size).unsqueeze(1).to(self.device)
+            batch_input_tokens = torch.tensor([self.vocab_tgt["<bos>"]] * batch_size).unsqueeze(1).to(self.device)
 
             translations = [[] for _ in range(batch_size)]
             is_finished = [False] * batch_size
 
             for _ in range(self.max_length):
-                output, (h, c) = self.decoder(input_token, h, c)
-                current_token = output.squeeze(1).argmax(dim=1)
+                output, (h, c) = self.decoder(batch_input_tokens, h, c)
+                current_batch_tokens = output.squeeze(1).argmax(dim=1)
 
-                for i, token in enumerate(current_token):
+                for i, token in enumerate(current_batch_tokens):
                     if not is_finished[i]:
                         if token.item() == self.vocab_tgt["<eos>"]:
                             is_finished[i] = True
                         else:
                             translations[i].append(token.item())
-                input_token = current_token.unsqueeze(1)
+                batch_input_tokens = current_batch_tokens.unsqueeze(1)
 
                 if all(is_finished):
                     break
